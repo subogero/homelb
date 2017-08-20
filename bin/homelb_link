@@ -1,0 +1,53 @@
+#!/bin/sh
+help() {
+	cat <<EOF
+Usage:
+	homelb_link add <hostname>
+	homelb_link del <hostname>
+	homelb_link help
+Create or delete a macvlan interface.
+Whan adding, get IP config via DHCP, associating a hostname.
+EOF
+	exit
+}
+
+BIN=$(dirname `readlink -f "$0"`)
+ETC=$BIN/../etc
+VAR=$BIN/../var
+cd $VAR
+
+verb=$1
+[ "$1" ] && shift
+host=$1
+[ "$1" ] && shift
+
+for i in `ip addr | sed -rn 's/^[0-9]+: (eth[0-9]+): .*/\1/p'`; do
+	ip addr show dev $i | grep 'inet ' && interface=$i && break
+done
+echo Physical interface=$interface
+
+# FIXME
+link=macv0
+
+case $verb in
+*help)
+	help
+	;;
+add)
+	echo $host >>$VAR/macv
+	link=macv`grep -n $host $VAR/macv | sed 's/:.*//'`
+	ip link add link $interface $link type macvlan
+	ifconfig $link up
+	dhcpcd-bin -h $host $link
+	;;
+del)
+	link=macv`grep -n $host $VAR/macv | sed 's/:.*//'`
+	sed "/$host/d" -i $VAR/macv
+	dhcpcd-bin -k $link
+	ip link delete $link
+	;;
+*)
+	echo Unknown verb $verb >&2
+	exit 1
+	;;
+esac
