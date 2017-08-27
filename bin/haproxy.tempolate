@@ -1,0 +1,31 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Tempolate;
+
+local $" = ""; # Interpolate arrays separated by nothing extra
+
+our %tempolates = (
+
+    "haproxy.cfg" => <<EOF,
+global
+	daemon
+	pidfile ./haproxy.pid
+defaults
+	timeout connect 5s
+	timeout client 20s
+	timeout server 20s
+
+@{[ map { <<EOV
+listen $_->{host} $_->{ip}:$_->{port}
+	mode tcp
+	balance roundrobin
+@{[ map { <<EOB
+	server $_->{host}_$_->{port} $_->{host}:$_->{port}
+EOB
+} @{$_->{server}} ]}
+EOV
+} @d ]}
+EOF
+
+);

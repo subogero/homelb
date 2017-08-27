@@ -21,30 +21,69 @@ verb=$1
 host=$1
 [ "$1" ] && shift
 
-for i in `ip addr | sed -rn 's/^[0-9]+: (eth[0-9]+): .*/\1/p'`; do
-	ip addr show dev $i | grep 'inet ' && interface=$i && break
-done
-echo Physical interface=$interface
+n_link() {
+	grep -n ^$host: macv | sed 's/:.*//'
+} 
 
-# FIXME
-link=macv0
+get_ip() {
+	dev=$1
+	ip addr show dev $dev | grep 'inet '
+}
+
+del_macv_routes() {
+	route -n |\
+	grep macv |\
+	perl -lane 'print "route del -net $F[0] gw $F[1] netmask $F[2] $F[-1]"' |\
+	sh
+}
+
+for i in `ip addr | sed -rn 's/^[0-9]+: (eth[0-9]+): .*/\1/p'`; do
+	get_ip $i >/dev/null && interface=$i && break
+done
 
 case $verb in
 *help)
 	help
 	;;
 add)
-	echo $host >>$VAR/macv
-	link=macv`grep -n $host $VAR/macv | sed 's/:.*//'`
+	[ -f macv ] || echo $host: >>macv
+	[ "$n" ] || n=`n_link`
+	[ "$n" ] || perl -lpe "unless(@a){ s/^:/$host:/ and push@a,1 }" -i macv
+	[ "$n" ] || n=`n_link`
+	[ "$n" ] || echo $host: >>macv
+	[ "$n" ] || n=`n_link`
+	link=macv$n
+	echo ip link add link $interface $link type macvlan >&2
 	ip link add link $interface $link type macvlan
 	ifconfig $link up
-	dhcpcd-bin -h $host $link
+	echo dhcpcd-bin -h $host $link >&2
+	dhcpcd-bin -G -R -P $link.pid -h $host $link
+	sleep 1
+	del_macv_routes
 	;;
 del)
-	link=macv`grep -n $host $VAR/macv | sed 's/:.*//'`
-	sed "/$host/d" -i $VAR/macv
-	dhcpcd-bin -k $link
+	link=macv`n_link`
+	sed "s/^$host:/:/" -i macv
+	echo dhcpcd-bin -k $link >&2
+	dhcpcd-bin -P $link.pid -k $link
+	echo ip link delete $link >&2
 	ip link delete $link
+	;;
+get)
+	echo Physical interface=$interface >&2
+	echo
+	echo Link Hostname Mapping
+	perl -lne 'print if s/(.+):/macv$. $1/' macv
+	echo
+	echo IP Configuration
+	ip addr | grep 'inet ..* macv'
+	echo
+	echo DHCP Client Processes
+	ps -fC dhcpcd-bin
+	;;
+ip)
+	link=macv`n_link`
+	get_ip $link | sed -r 's| *inet ([0-9.]+)/.*|\1|'
 	;;
 *)
 	echo Unknown verb $verb >&2

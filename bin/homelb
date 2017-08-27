@@ -1,0 +1,72 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use FindBin;
+use YAML qw(Load Dump LoadFile DumpFile);
+use Getopt::Long;
+use List::MoreUtils qw(uniq);
+
+my $script = "$FindBin::Bin/$FindBin::Script";
+
+my $verb = shift;
+my $host = shift;
+
+my $opt = { server => [] };
+GetOptions($opt,
+    'port|p=i',
+    'server|s=s@',
+    'help|h' => sub { exec "perldoc $script" }
+);
+
+$verb //= '';
+die "Unknown verb $verb" unless $verb =~ /^(add|del)$/;
+die "No virtual host" unless $host;
+
+my @data = eval { @{ LoadFile "$FindBin::Bin/../var/database.yml" } };
+my ($virt) = grep { $_->{host} eq $host } @data;
+
+if ($verb eq 'del' && ! @{$opt->{server}}) {
+    @data = grep { $_->{host} ne $host } @data;
+    system "$FindBin::Bin/homelb_link del $host";
+} elsif ($virt) {
+    my @old_srv = map { read_srv($_) } @{$virt->{server}};
+    my @all_srv =
+        $verb eq 'add' ? uniq(@old_srv, @{$opt->{server}}) :
+        $verb eq 'del' ? map { $_ ~~ $opt->{server} ? () : $_ } @old_srv
+                       : die "Unknown verb $verb";
+    $virt->{server} = [ map { write_srv($_) } @all_srv ];
+} elsif ($verb eq 'add') {
+    $virt = {
+        host => $host,
+        port => $opt->{port},
+        server => [ map { write_srv($_) } @{$opt->{server}} ],
+    };
+    push @data, $virt;
+    system "$FindBin::Bin/homelb_link add $host";
+} else {
+    die "Can't delete unknown virtual $host";
+}
+
+DumpFile "$FindBin::Bin/../var/database.yml", \@data;
+
+open HAT, "| $FindBin::Bin/haproxy.tempolate cp" or die $!;
+my $ha_yaml = Dump [ map {
+    my $ip = `$FindBin::Bin/homelb_link ip $_->{host}`;
+    chomp $ip;
+    $_->{ip} = $ip;
+    $_
+} @data ];
+print HAT $ha_yaml;
+system "haproxy -f haproxy.cfg -sf `cat haproxy.pid`";
+
+# HELPERS
+
+sub read_srv {
+    my $hr = shift;
+    return "$hr->{host}:$hr->{port}";
+}
+
+sub write_srv {
+    my ($h, $p) = split /:/, shift;
+    return { host => $h, port => $p };
+}
