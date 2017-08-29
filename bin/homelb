@@ -6,7 +6,11 @@ use YAML qw(Load Dump LoadFile DumpFile);
 use Getopt::Long;
 use List::MoreUtils qw(uniq);
 
-my $script = "$FindBin::Bin/$FindBin::Script";
+my $BIN = $FindBin::Bin;
+my $script = "$BIN/$FindBin::Script";
+my $VAR = "$BIN/../var";
+chdir $VAR;
+print STDERR "Running in @{[ `pwd` ]}";
 
 my $verb = shift;
 my $host = shift;
@@ -19,45 +23,67 @@ GetOptions($opt,
 );
 
 $verb //= '';
-die "Unknown verb $verb" unless $verb =~ /^(add|del)$/;
-die "No virtual host" unless $host;
+die "Unknown verb $verb" unless $verb =~ /^(add|del|)$/;
+$host //= '';
 
-my @data = eval { @{ LoadFile "$FindBin::Bin/../var/database.yml" } };
+my @data = eval { @{ LoadFile "homelb.yml" } };
 my ($virt) = grep { $_->{host} eq $host } @data;
 
 if ($verb eq 'del' && ! @{$opt->{server}}) {
+    print STDERR "homelb deleting virtual $host\n";
     @data = grep { $_->{host} ne $host } @data;
-    system "$FindBin::Bin/homelb_link del $host";
+    system "$BIN/homelb_link del $host";
 } elsif ($virt) {
     my @old_srv = map { read_srv($_) } @{$virt->{server}};
     my @all_srv =
         $verb eq 'add' ? uniq(@old_srv, @{$opt->{server}}) :
         $verb eq 'del' ? map { $_ ~~ $opt->{server} ? () : $_ } @old_srv
                        : die "Unknown verb $verb";
+    print STDERR "homelb setting servers of virtual $host to @all_srv\n";
     $virt->{server} = [ map { write_srv($_) } @all_srv ];
 } elsif ($verb eq 'add') {
+    print STDERR "homelb creating virtual $host\n";
     $virt = {
         host => $host,
         port => $opt->{port},
         server => [ map { write_srv($_) } @{$opt->{server}} ],
     };
     push @data, $virt;
-    system "$FindBin::Bin/homelb_link add $host";
+    system "$BIN/homelb_link add $host";
 } else {
-    die "Can't delete unknown virtual $host";
+    print STDERR "homelb restarting macvlans\n";
+    system "$BIN/homelb_link restart";
 }
 
-DumpFile "$FindBin::Bin/../var/database.yml", \@data;
+if ($host) {
+    print STDERR "homelb writing config\n";
+    DumpFile "homelb.yml", \@data
+}
 
-open HAT, "| $FindBin::Bin/haproxy.tempolate cp" or die $!;
+open HAT, "| $BIN/homelb_ha.tempo cp" or die $!;
 my $ha_yaml = Dump [ map {
-    my $ip = `$FindBin::Bin/homelb_link ip $_->{host}`;
+    my $ip = `$BIN/homelb_link ip $_->{host}`;
     chomp $ip;
     $_->{ip} = $ip;
     $_
 } @data ];
 print HAT $ha_yaml;
-system "haproxy -f haproxy.cfg -sf `cat haproxy.pid`";
+close HAT;
+
+my @hapids;
+if (open HAP, "homelb_ha.pid") {
+    @hapids = <HAP>;
+    chomp @hapids;
+    close HAP;
+}
+if (@data) {
+    print STDERR "haproxy -f homelb_ha.cfg -p homelb_ha.pid -D -sf @hapids\n";
+    system "haproxy -f homelb_ha.cfg -p homelb_ha.pid -D -sf @hapids";
+} elsif (@hapids) {
+    print STDERR "homelb stopping haproxy\n";
+    kill 'TERM', @hapids;
+    unlink "homelb_ha.pid";
+}
 
 # HELPERS
 

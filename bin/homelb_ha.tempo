@@ -7,10 +7,9 @@ local $" = ""; # Interpolate arrays separated by nothing extra
 
 our %tempolates = (
 
-    "haproxy.cfg" => <<EOF,
+    "homelb_ha.cfg" => <<EOF,
 global
 	daemon
-	pidfile ./haproxy.pid
 defaults
 	timeout connect 5s
 	timeout client 20s
