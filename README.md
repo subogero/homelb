@@ -4,10 +4,24 @@ homelb - Home Load Balancer
 
 # SYNOPSIS
 
+Start/restart configured virtuals
+
+    homelb
+
+Add a new virtual, or a new backend server to an existing virtual
+
     homelb add omxui --port 80 --server foo:31100 --server bar:3000
     homelb add omxui --server baz:8080
+
+Delete backend from existing virtual, or the entire virtual
+
     homelb del omxui --server foo:31100
     homelb del omxui
+
+List virtuals or see details of one
+
+    homelb get
+    homelb get omxui
 
 # DESCRIPTION
 
@@ -31,3 +45,10 @@ Simplify the URL of the Transmission Web UI as seen below.
 On a Linux device on the home network:
 
     homelb add trans --port 80 --server raspberry:9091
+
+# FILES
+
+* `/var/homelb.yml` Database of all your virtuals
+* `/var/homelb.macv` Virtual macvlan link mapping
+* `/var/homelb_ha.cfg` HAproxy configuration
+* `/var/homelb_ha.pid` HAproxy PID file

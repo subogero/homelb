@@ -85,16 +85,17 @@ restart)
 	done
 	;;
 get)
+	link=`linkname $host`
 	echo Physical interface=$interface >&2
 	echo
 	echo Link Hostname Mapping
-	perl -lne 'print if s/(.+):/macv$. $1/' homelb.macv
+	perl -lne 'print if s/(.+):/macv$. $1/' homelb.macv | grep "$link"
 	echo
 	echo IP Configuration
-	ip addr | grep 'inet ..* macv'
+	ip addr | grep 'inet ..* macv' | grep "$link"
 	echo
 	echo DHCP Client Processes
-	ps -fC dhcpcd-bin
+	ps -fC dhcpcd-bin | grep "$link"
 	;;
 ip)
 	link=`linkname $host`

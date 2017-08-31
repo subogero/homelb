@@ -23,13 +23,22 @@ GetOptions($opt,
 );
 
 $verb //= '';
-die "Unknown verb $verb" unless $verb =~ /^(add|del|)$/;
+die "Unknown verb $verb" unless $verb =~ /^(add|del|get|)$/;
 $host //= '';
 
 my @data = eval { @{ LoadFile "homelb.yml" } };
 my ($virt) = grep { $_->{host} eq $host } @data;
 
-if ($verb eq 'del' && ! @{$opt->{server}}) {
+if ($verb eq 'get') {
+    if ($host) {
+        my ($v) = grep { $_->{host} eq $host } @data;
+        print Dump($v), "...\n";
+        system "$BIN/homelb_link get $host";
+    } else {
+        print map { "$_->{host}\n" } @data;
+    }
+    exit;
+} elsif ($verb eq 'del' && ! @{$opt->{server}}) {
     print STDERR "homelb deleting virtual $host\n";
     @data = grep { $_->{host} ne $host } @data;
     system "$BIN/homelb_link del $host";
