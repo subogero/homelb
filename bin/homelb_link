@@ -25,6 +25,14 @@ linkname() {
 	grep -n ^$1: homelb.macv | sed -rn 's/^([0-9]+):.*/macv\1/p'
 }
 
+linknum() {
+	grep -n ^$1: homelb.macv | sed -rn 's/^([0-9]+):.*/\1/p'
+}
+
+maca() {
+	$BIN/homelb_mac `linknum $1`
+}
+
 get_ip() {
 	dev=$1
 	ip addr show dev $dev | grep 'inet '
@@ -53,11 +61,11 @@ add)
 	[ "$link" ] || link=`linkname $host`
 	[ "$link" ] || echo $host: >>homelb.macv
 	[ "$link" ] || link=`linkname $host`
-	echo ip link add link $interface $link type macvlan >&2
-	ip link add link $interface $link type macvlan
+	echo ip link add link $interface address `maca $host` $link type macvlan >&2
+	ip link add link $interface address `maca $host` $link type macvlan >&2
 	ifconfig $link up
 	echo dhcpcd-bin -G -R -P $link.pid -h $host $link >&2
-	dhcpcd-bin -G -R -l 31536000 -P $link.pid -h $host $link
+	dhcpcd-bin -G -R -l 31536000 -m 9 -P $link.pid -h $host $link
 	sleep 1
 	;;
 del)
@@ -76,12 +84,12 @@ restart)
 		dhcpcd-bin -P $link.pid -x $link
 		echo ip link delete $link >&2
 		ip link delete $link
-		echo ip link add link $interface $link type macvlan >&2
-		ip link add link $interface $link type macvlan
+		echo ip link add link $interface address `maca $host` $link type macvlan >&2
+		ip link add link $interface address `maca $host` $link type macvlan >&2
 		ifconfig $link up
 		ifconfig $link up
 		echo dhcpcd-bin -G -R -P $link.pid -h $host $link >&2
-		dhcpcd-bin -G -R -l 31536000 -m 1000 -P $link.pid -h $host $link
+		dhcpcd-bin -G -R -l 31536000 -m 9 -P $link.pid -h $host $link
 	done
 	;;
 get)

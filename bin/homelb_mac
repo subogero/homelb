@@ -1,0 +1,14 @@
+#!/usr/bin/perl -l
+use strict;
+use warnings;
+use integer;
+my $n = shift;
+my @hex;
+while (@hex < 5) {
+    my $hex = sprintf("%X", $n % 256);
+    $hex =~ s/^\d$/0$&/;
+    unshift @hex, $hex;
+    $n /= 256;
+}
+unshift @hex, 46;
+print join ':', @hex;
